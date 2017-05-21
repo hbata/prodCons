@@ -1,0 +1,118 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+/* 
+ * File:   main.c
+ * Author: hesham
+ *
+ * Created on May 12, 2017, 1:04 PM
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include<pthread.h>
+#include <unistd.h>
+#define BUFF_SIZE 20
+int counter = 0;
+int buff[BUFF_SIZE];
+pthread_mutex_t lock;
+//pthread_mutex_t emptyLock;
+pthread_cond_t empCond;
+pthread_cond_t fullCond;
+
+/* Add an item to the buffer */
+int insert_item(int item) {
+    /* When the buffer is not full add the item
+       and increment the counter*/
+    if (counter < BUFF_SIZE) {
+        buff[counter] = item;
+        counter++;
+        return 0;
+    } else { /* Error the buffer is full */
+        return -1;
+    }
+}
+
+/* Remove an item from the buffer */
+int remove_item() {
+    /* When the buffer is not empty remove the item
+       and decrement the counter */
+    if (counter >= 0) {
+        int item = buff[(counter - 1)];
+        counter--;
+        return 0;
+    } else { /* Error buffer empty */
+        return -1;
+    }
+}
+
+void *producer(void *msg) {
+    int vc = 0;
+    for (int i = 0; i < 100; i++) {
+        sleep(0.5);
+//        pthread_cond_wait(&empCond, &lock);
+        pthread_mutex_lock(&lock);
+        vc = insert_item(counter);
+        if (vc != 0) {
+            printf("%s thread failed to insert, buffer full.\n", (char*) msg);
+            pthread_cond_signal(&fullCond);
+            pthread_cond_wait(&empCond, &lock);
+        } else {
+            printf("%s thread inserted %d.\n", (char*) msg, counter);
+            pthread_cond_signal(&fullCond);
+
+        }
+
+        pthread_mutex_unlock(&lock);
+    }
+}
+
+void *consumer(void *msg) {
+    int vc = -1;
+    for (int i = 0; i < 100; i++) {
+        sleep(0.5);
+        pthread_mutex_lock(&lock);
+        pthread_cond_wait(&fullCond, &lock);
+        vc = remove_item();
+        while (remove_item()) {
+//            printf("%s thread failed to remove.\n", (char*) msg);
+            pthread_cond_signal(&empCond);
+            pthread_cond_wait(&fullCond, &lock);
+//        } else {
+            printf("%s thread removed %d.\n", (char*) msg, counter);
+//            pthread_cond_signal(&empCond);
+        }
+        pthread_mutex_unlock(&lock);
+    }
+
+}
+
+int main(int argc, char** argv) {
+    char *msg1 = "Procuder";
+    char * msg2 = "Consumer";
+    void* status1;
+    void *status2;
+    pthread_t thread1, thread2;
+    pthread_cond_init(&empCond, NULL);
+    pthread_cond_init(&fullCond, NULL);
+    pthread_mutex_init(&lock, NULL);
+    int p = pthread_create(&thread1, NULL, &consumer, (void*) msg2);
+    int c = pthread_create(&thread2, NULL, &producer, (void*) msg1);
+    if ((p != 0) || (c != 0)) {
+        printf("error creating threads!!\n");
+        exit(EXIT_FAILURE);
+    }
+    pthread_join(thread1, &status1);
+    pthread_join(thread2, &status2);
+    pthread_cond_destroy(&empCond);
+    pthread_cond_destroy(&fullCond);
+    pthread_mutex_destroy(&lock);
+
+
+    return (EXIT_SUCCESS);
+}
+
+
